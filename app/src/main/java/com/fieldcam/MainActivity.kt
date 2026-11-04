@@ -156,7 +156,11 @@ private fun App(
 
         Screen.Settings -> SettingsScreen(
             config = cfg,
-            onSave = { saved -> update { saved } },
+            // 설정이 고치는 칸만 덮어쓴다. lastMode 처럼 다른 화면이 쓰는 값은 저장소 것을 유지한다.
+            onSave = { saved ->
+                val clean = saved.sanitized()
+                update { it.copy(routine = clean.routine, projects = clean.projects, currentProject = clean.currentProject) }
+            },
             onBack = { screen = Screen.Select },
         )
     }

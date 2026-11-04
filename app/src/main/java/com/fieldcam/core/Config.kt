@@ -29,6 +29,17 @@ data class Config(
     val lastMode: Mode = Mode.ROUTINE,
 ) {
     val project: Project? get() = projects.getOrNull(currentProject)
+
+    /** 모든 이름을 최종 규칙으로 정리한 사본. 저장 직전에 써서 끝에 하이픈이 붙은 이름이 폴더·파일명에 들어가지 않게 한다. */
+    fun sanitized(): Config = copy(
+        routine = routine.map(Naming::sanitize),
+        projects = projects.map { p ->
+            p.copy(
+                name = Naming.sanitize(p.name),
+                groups = p.groups.map { g -> g.copy(name = Naming.sanitize(g.name), items = g.items.map(Naming::sanitize)) },
+            )
+        },
+    )
 }
 
 object Defaults {

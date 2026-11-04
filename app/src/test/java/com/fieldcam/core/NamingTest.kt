@@ -55,6 +55,18 @@ class NamingTest {
     }
 
     @Test
+    fun configSanitizedTrimsEveryName() {
+        val c = Config(
+            routine = listOf("Boiler1-", " RW shop"),
+            projects = listOf(Project("B2OH26-", listOf(Group("ESP-", listOf("1A1", "-Inlet-S-"))))),
+        ).sanitized()
+        assertEquals(listOf("Boiler1", "RW-shop"), c.routine)
+        assertEquals("B2OH26", c.projects[0].name)
+        assertEquals("ESP", c.projects[0].groups[0].name)
+        assertEquals(listOf("1A1", "Inlet-S"), c.projects[0].groups[0].items)
+    }
+
+    @Test
     fun seqParsing() {
         val p = "110426_Boiler2_"
         assertEquals(7, Naming.seqOf("110426_Boiler2_007.jpg", p))

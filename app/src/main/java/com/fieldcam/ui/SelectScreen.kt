@@ -48,7 +48,8 @@ fun SelectScreen(
     onSettings: () -> Unit,
 ) {
     var groupName by remember { mutableStateOf<String?>(null) }
-    val project = config.project
+    // 이름이 비어 있는 공사는 폴더명이 될 수 없으니 없는 것으로 본다.
+    val project = config.project?.takeIf { it.name.isNotBlank() }
     val group = project?.groups?.firstOrNull { it.name == groupName }
 
     BackHandler(enabled = mode == Mode.OVERHAUL && group != null) { groupName = null }
@@ -68,7 +69,10 @@ fun SelectScreen(
             Mode.OVERHAUL -> {
                 if (project == null) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("설정에서 오버홀 공사를 추가하세요", fontSize = 22.sp)
+                        Text(
+                            if (config.project == null) "설정에서 오버홀 공사를 추가하세요" else "설정에서 오버홀 공사 이름을 입력하세요",
+                            fontSize = 22.sp,
+                        )
                     }
                 } else if (group == null) {
                     Header(project.name, null)
