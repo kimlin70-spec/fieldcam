@@ -46,6 +46,15 @@ class NamingTest {
     }
 
     @Test
+    fun filterKeepsTrailingHyphenWhileTyping() {
+        assertEquals("Inlet-", Naming.filter("Inlet-"))
+        assertEquals("Inlet-", Naming.filter("Inlet "))
+        assertEquals("RW-shop", Naming.filter("RW shop"))
+        assertEquals("1A1", Naming.filter("1A1!"))
+        assertEquals("Inlet", Naming.sanitize("Inlet-"))
+    }
+
+    @Test
     fun seqParsing() {
         val p = "110426_Boiler2_"
         assertEquals(7, Naming.seqOf("110426_Boiler2_007.jpg", p))

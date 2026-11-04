@@ -17,14 +17,16 @@ object Naming {
     fun dateStamp(date: LocalDate = LocalDate.now()): String = date.format(dateFmt)
 
     /**
-     * 타일 이름 정리. 영문·숫자·하이픈만 남긴다.
+     * 입력 중에 쓰는 가벼운 정리. 영문·숫자·하이픈만 남긴다.
      * 공백은 하이픈으로, 밑줄은 파일명 구분자라서 하이픈으로 바꾼다.
+     * 끝에 붙은 하이픈은 그대로 둔다. "Inlet-S" 를 치는 도중의 "Inlet-" 가 살아 있어야 한다.
      */
-    fun sanitize(raw: String): String =
-        raw.trim()
-            .replace(Regex("[\\s_]+"), "-")
+    fun filter(raw: String): String =
+        raw.replace(Regex("[\\s_]+"), "-")
             .replace(allowed, "")
-            .trim('-')
+
+    /** 최종 정리. [filter] 에 더해 양 끝 하이픈을 떼어낸다. 입력칸을 벗어날 때와 파일명에 쓴다. */
+    fun sanitize(raw: String): String = filter(raw).trim('-')
 
     fun isValid(name: String): Boolean = name.isNotEmpty() && sanitize(name) == name
 

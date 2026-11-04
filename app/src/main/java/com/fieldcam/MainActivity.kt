@@ -156,7 +156,7 @@ private fun App(
 
         Screen.Settings -> SettingsScreen(
             config = cfg,
-            onUpdate = { update(it) },
+            onSave = { saved -> update { saved } },
             onBack = { screen = Screen.Select },
         )
     }

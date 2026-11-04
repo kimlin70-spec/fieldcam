@@ -12,10 +12,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -24,12 +24,14 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -37,7 +39,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fieldcam.core.Config
@@ -50,16 +57,26 @@ import com.fieldcam.core.Project
  * 설정. 사무실에서 장갑 벗고 쓰는 화면이라 일반 리스트 UI.
  * 경상 이름 12개, 오버홀 공사 목록과 각 공사의 1차·2차 분류 12개씩.
  * 이름은 영문·숫자·하이픈만 허용되고 그대로 파일명이 된다.
+ *
+ * 화면이 떠 있는 동안은 [draft] 가 진실이고, 바뀔 때마다 [onSave] 로 뒤에서 저장한다.
+ * 저장소에서 돌아오는 값으로 입력칸을 덮어쓰지 않아서 타이핑이 밀리거나 커서가 튀지 않는다.
  */
 @Composable
 fun SettingsScreen(
     config: Config,
-    onUpdate: ((Config) -> Config) -> Unit,
+    onSave: (Config) -> Unit,
     onBack: () -> Unit,
 ) {
+    var draft by remember { mutableStateOf(config) }
     var tab by remember { mutableIntStateOf(0) }
     var groupIndex by remember { mutableStateOf<Int?>(null) }
-    val project = config.project
+    val project = draft.project
+
+    fun change(transform: (Config) -> Config) {
+        val next = transform(draft)
+        draft = next
+        onSave(next)
+    }
 
     BackHandler { if (groupIndex != null) groupIndex = null else onBack() }
 
@@ -79,50 +96,49 @@ fun SettingsScreen(
         when {
             tab == 0 -> NameListEditor(
                 title = "경상 위치 (최대 ${Defaults.MAX_TILES}개)",
-                items = config.routine,
+                items = draft.routine,
                 name = { it },
                 rename = { _, n -> n },
                 create = { "" },
-                onChange = { list -> onUpdate { it.copy(routine = list) } },
+                onChange = { list -> change { it.copy(routine = list) } },
             )
 
             project != null && g != null && g < project.groups.size -> {
                 val group = project.groups[g]
                 NameListEditor(
-                    title = "${project.name} · ${group.name} · 2차 분류 (최대 ${Defaults.MAX_TILES}개)",
+                    title = "${project.name} › ${group.name.ifBlank { "(이름 없음)" }} › 2차 분류 (최대 ${Defaults.MAX_TILES}개)",
                     items = group.items,
                     name = { it },
                     rename = { _, n -> n },
                     create = { "" },
                     onChange = { list ->
-                        onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups.replaceAt(g) { it.copy(items = list) }) } }
+                        change { c -> c.updateProject { p -> p.copy(groups = p.groups.replaceAt(g) { it.copy(items = list) }) } }
                     },
                 )
             }
 
-            else -> OverhaulSettings(config, onUpdate) { groupIndex = it }
+            else -> OverhaulSettings(draft, ::change) { groupIndex = it }
         }
     }
 }
 
 @Composable
-private fun OverhaulSettings(config: Config, onUpdate: ((Config) -> Config) -> Unit, onOpenGroup: (Int) -> Unit) {
+private fun OverhaulSettings(config: Config, change: ((Config) -> Config) -> Unit, onOpenGroup: (Int) -> Unit) {
     val project = config.project
     LazyColumn(Modifier.fillMaxSize().padding(horizontal = 12.dp)) {
         item {
-            Text("오버홀 공사 (현재 공사가 갤러리 폴더명이 됩니다)", fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
+            Text("오버홀 공사. 현재 공사(●)가 갤러리 폴더명이 됩니다.", fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
         }
         itemsIndexed(config.projects) { i, p ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = i == config.currentProject, onClick = { onUpdate { it.copy(currentProject = i) } })
-                OutlinedTextField(
-                    value = p.name,
-                    onValueChange = { n -> onUpdate { c -> c.copy(projects = c.projects.replaceAt(i) { it.copy(name = Naming.sanitize(n)) }) } },
-                    singleLine = true,
+                RadioButton(selected = i == config.currentProject, onClick = { change { it.copy(currentProject = i) } })
+                NameField(
+                    name = p.name,
+                    onCommit = { n -> change { c -> c.copy(projects = c.projects.replaceAt(i) { it.copy(name = n) }) } },
                     modifier = Modifier.weight(1f),
                 )
                 IconButton(onClick = {
-                    onUpdate { c ->
+                    change { c ->
                         val rest = c.projects.filterIndexed { j, _ -> j != i }
                         val cur = when {
                             rest.isEmpty() -> 0
@@ -138,7 +154,7 @@ private fun OverhaulSettings(config: Config, onUpdate: ((Config) -> Config) -> U
         item {
             Button(
                 onClick = {
-                    onUpdate { c ->
+                    change { c ->
                         // 새 공사는 현재 공사의 분류 구성을 복사해서 시작한다.
                         val template = c.project?.groups ?: Defaults.project.groups
                         c.copy(projects = c.projects + Project("NewOH", template), currentProject = c.projects.size)
@@ -153,24 +169,32 @@ private fun OverhaulSettings(config: Config, onUpdate: ((Config) -> Config) -> U
         }
         if (project != null) {
             item {
-                Text("${project.name} · 1차 분류 (최대 ${Defaults.MAX_TILES}개, ▶ 로 2차 분류 편집)", fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
+                Text("${project.name} 의 1차 분류 (최대 ${Defaults.MAX_TILES}개)", fontSize = 16.sp, modifier = Modifier.padding(vertical = 8.dp))
             }
             itemsIndexed(project.groups) { i, group ->
-                NameRow(
-                    name = group.name,
-                    canUp = i > 0,
-                    canDown = i < project.groups.size - 1,
-                    onRename = { n -> onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups.replaceAt(i) { it.copy(name = n) }) } } },
-                    onUp = { onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups.swap(i, i - 1)) } } },
-                    onDown = { onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups.swap(i, i + 1)) } } },
-                    onDelete = { onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups.filterIndexed { j, _ -> j != i }) } } },
-                    onOpen = { onOpenGroup(i) },
-                )
+                Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+                    NameRow(
+                        name = group.name,
+                        canUp = i > 0,
+                        canDown = i < project.groups.size - 1,
+                        onRename = { n -> change { c -> c.updateProject { p -> p.copy(groups = p.groups.replaceAt(i) { it.copy(name = n) }) } } },
+                        onUp = { change { c -> c.updateProject { p -> p.copy(groups = p.groups.swap(i, i - 1)) } } },
+                        onDown = { change { c -> c.updateProject { p -> p.copy(groups = p.groups.swap(i, i + 1)) } } },
+                        onDelete = { change { c -> c.updateProject { p -> p.copy(groups = p.groups.filterIndexed { j, _ -> j != i }) } } },
+                    )
+                    // 2차 분류로 들어가는 입구. 글자로 써서 눌러볼 수 있게 보인다.
+                    OutlinedButton(
+                        onClick = { onOpenGroup(i) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                    ) {
+                        Text("2차 분류 ${group.items.count { it.isNotBlank() }}개  편집 ›", fontSize = 16.sp)
+                    }
+                }
             }
             if (project.groups.size < Defaults.MAX_TILES) {
                 item {
                     Button(
-                        onClick = { onUpdate { c -> c.updateProject { p -> p.copy(groups = p.groups + Group("")) } } },
+                        onClick = { change { c -> c.updateProject { p -> p.copy(groups = p.groups + Group("")) } } },
                         modifier = Modifier.padding(vertical = 8.dp),
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null)
@@ -204,7 +228,6 @@ private fun <T> NameListEditor(
                 onUp = { onChange(items.swap(i, i - 1)) },
                 onDown = { onChange(items.swap(i, i + 1)) },
                 onDelete = { onChange(items.filterIndexed { j, _ -> j != i }) },
-                onOpen = null,
             )
         }
         if (items.size < Defaults.MAX_TILES) {
@@ -228,23 +251,54 @@ private fun NameRow(
     onUp: () -> Unit,
     onDown: () -> Unit,
     onDelete: () -> Unit,
-    onOpen: (() -> Unit)?,
 ) {
     Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
-            value = name,
-            onValueChange = { onRename(Naming.sanitize(it)) },
-            singleLine = true,
-            placeholder = { Text("영문/숫자/하이픈") },
-            modifier = Modifier.weight(1f),
-        )
+        NameField(name = name, onCommit = onRename, modifier = Modifier.weight(1f))
         IconButton(onClick = onUp, enabled = canUp) { Icon(Icons.Default.KeyboardArrowUp, contentDescription = "위로") }
         IconButton(onClick = onDown, enabled = canDown) { Icon(Icons.Default.KeyboardArrowDown, contentDescription = "아래로") }
         IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, contentDescription = "삭제") }
-        if (onOpen != null) {
-            IconButton(onClick = onOpen) { Icon(Icons.Default.ChevronRight, contentDescription = "2차 분류") }
-        }
     }
+}
+
+/**
+ * 이름 입력칸. 글자와 커서를 자기가 들고 있어서 치는 대로 써진다.
+ * 입력 중에는 허용 안 되는 글자만 걸러내고, 칸을 벗어날 때 양 끝 하이픈을 정리한다.
+ * 밖에서 이름이 바뀌면(순서 변경, 삭제로 줄이 밀림) 그때만 입력칸을 새 이름으로 바꾼다.
+ */
+@Composable
+private fun NameField(name: String, onCommit: (String) -> Unit, modifier: Modifier = Modifier) {
+    var text by remember { mutableStateOf(TextFieldValue(name, TextRange(name.length))) }
+
+    LaunchedEffect(name) {
+        if (name != text.text) text = TextFieldValue(name, TextRange(name.length))
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { v ->
+            val clean = Naming.filter(v.text)
+            text = if (clean == v.text) {
+                v
+            } else {
+                // 걸러낸 글자가 있으면 커서를 그 앞까지 남은 글자 수 위치에 둔다.
+                val cursor = Naming.filter(v.text.substring(0, v.selection.end)).length.coerceAtMost(clean.length)
+                TextFieldValue(clean, TextRange(cursor))
+            }
+            if (text.text != name) onCommit(text.text)
+        },
+        singleLine = true,
+        placeholder = { Text("영문/숫자/하이픈") },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+        modifier = modifier.onFocusChanged { state ->
+            if (!state.isFocused) {
+                val finished = Naming.sanitize(text.text)
+                if (finished != text.text) {
+                    text = TextFieldValue(finished, TextRange(finished.length))
+                    onCommit(finished)
+                }
+            }
+        },
+    )
 }
 
 private fun Config.updateProject(transform: (Project) -> Project): Config =
