@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 카메라 몸체 -->
+    <path
+        android:fillColor="#1E1E1E"
+        android:pathData="M30,38 L42,38 L46,31 L62,31 L66,38 L78,38 A6,6 0 0 1 84,44 L84,72 A6,6 0 0 1 78,78 L30,78 A6,6 0 0 1 24,72 L24,44 A6,6 0 0 1 30,38 Z" />
+    <!-- 렌즈 -->
+    <path
+        android:fillColor="#FFC107"
+        android:pathData="M54,46 A12,12 0 1 1 53.99,46 Z" />
+    <path
+        android:fillColor="#1E1E1E"
+        android:pathData="M54,51 A7,7 0 1 1 53.99,51 Z" />
+</vector>
