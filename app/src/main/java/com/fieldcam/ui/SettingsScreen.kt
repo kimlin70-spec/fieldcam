@@ -142,7 +142,7 @@ private fun OverhaulSettings(config: Config, change: ((Config) -> Config) -> Uni
         }
         itemsIndexed(config.projects) { i, p ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = i == config.currentProject, onClick = { change { it.copy(currentProject = i) } })
+                RadioButton(selected = i == config.currentProject, onClick = { focusManager.clearFocus(); change { it.copy(currentProject = i) } })
                 NameField(
                     name = p.name,
                     onCommit = { n -> change { c -> c.copy(projects = c.projects.replaceAt(i) { it.copy(name = n) }) } },
