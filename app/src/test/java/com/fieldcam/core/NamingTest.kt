@@ -71,9 +71,20 @@ class NamingTest {
         val p = "110426_Boiler2_"
         assertEquals(7, Naming.seqOf("110426_Boiler2_007.jpg", p))
         assertEquals(1000, Naming.seqOf("110426_Boiler2_1000.jpg", p))
-        assertNull(Naming.seqOf("110426_Boiler2_007 (1).jpg", p))
+        // 갤러리가 겹친 이름에 붙이는 꼬리는 떼고 센다
+        assertEquals(7, Naming.seqOf("110426_Boiler2_007 (1).jpg", p))
+        assertEquals(12, Naming.seqOf("110426_Boiler2_012 (23).jpg", p))
+        assertNull(Naming.seqOf("110426_Boiler2_ (1).jpg", p))
         assertNull(Naming.seqOf("110426_Boiler22_007.jpg", p))
         assertNull(Naming.seqOf("110526_Boiler2_007.jpg", p))
+    }
+
+    @Test
+    fun nextSeqCountsGallerySuffixedNames() {
+        // 앱을 다시 깐 날: 예전 사진은 안 보이고, 새로 찍은 것이 꼬리를 달고 저장돼 있다
+        val p = "110426_Boiler2_"
+        val ownFiles = listOf("110426_Boiler2_001 (1).jpg", "110426_Boiler2_002 (1).jpg")
+        assertEquals(3, Naming.nextSeq(ownFiles, p))
     }
 
     @Test

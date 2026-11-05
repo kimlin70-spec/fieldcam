@@ -37,11 +37,13 @@ object Naming {
     /**
      * 기존 파일명에서 순번을 꺼낸다. 접두어가 다르거나 형식이 안 맞으면 null.
      * "110426_Boiler2_007.jpg" + "110426_Boiler2_" → 7
+     * 같은 이름이 이미 있으면 갤러리(MediaProvider)가 "…_007 (1).jpg" 처럼 꼬리를 붙여 저장한다.
+     * 우리 이름에는 공백이 없으므로 " (" 뒤는 그 꼬리이고, 순번 계산에서는 떼어 낸다.
      */
     fun seqOf(fileName: String, prefix: String): Int? {
         if (!fileName.startsWith(prefix)) return null
         val rest = fileName.removePrefix(prefix)
-        val digits = rest.substringBefore('.')
+        val digits = rest.substringBefore('.').substringBefore(" (")
         if (digits.isEmpty() || !digits.all { it.isDigit() }) return null
         return digits.toIntOrNull()
     }
