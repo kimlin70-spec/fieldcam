@@ -1,3 +1,7 @@
+// build.gradle.kts 안에서 `java` 는 자바 플러그인 설정을 가리키므로 java.util.* 를 풀어 쓰지 말고 import 한다.
+import java.io.File
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -15,11 +19,11 @@ val appVersionName = (findProperty("versionName") as String?) ?: "1.0-local"
 //   storeFile 은 절대 경로 또는 프로젝트 루트 기준 상대 경로.
 // GitHub 자동 빌드는 저장소 Secrets 로 이 파일을 만든다. 파일이 없으면 debug 키로 서명한다.
 // 모든 빌드가 같은 키로 서명돼야 새 APK 가 이미 깔린 앱 위에 덮어쓰기 설치되고 설정이 유지된다.
-val keystoreProps = java.util.Properties().apply {
+val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
     if (f.exists()) f.inputStream().use { load(it) }
 }
-val releaseKeystore: java.io.File? = keystoreProps.getProperty("storeFile")
+val releaseKeystore: File? = keystoreProps.getProperty("storeFile")
     ?.trim()
     ?.takeIf { it.isNotEmpty() }
     ?.let { rootProject.file(it) }
