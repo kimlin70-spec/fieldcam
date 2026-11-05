@@ -6,32 +6,54 @@
 
 ## 설치와 업데이트
 
-`main`에 합칠 때마다 GitHub Actions가 APK를 만들어 아래 링크에 덮어쓴다. PC는 필요 없다.
+`main`에 합칠 때마다 GitHub Actions가 APK를 만들어 아래 링크에 덮어쓴다. 처음 한 번 설정한 뒤에는 PC가 필요 없다.
 
 - 다운로드: https://github.com/kimlin70-spec/fieldcam/releases/download/apk-latest/fieldcam.apk
 - 릴리스 페이지: https://github.com/kimlin70-spec/fieldcam/releases/tag/apk-latest
 
-1. 폰 브라우저에서 다운로드 링크를 연다. Chrome이 "해를 끼칠 수 있는 파일"이라고 물으면 다운로드를 누른다.
-2. 받은 `fieldcam.apk`를 열면 "출처를 알 수 없는 앱" 설정으로 간다. APK를 연 앱(Chrome이나 내 파일)의 **이 출처 허용**을 켜고 돌아온다. 삼성은 설정 → 보안 및 개인정보 보호 → 자동 차단이 켜져 있으면 먼저 끈다.
-3. Play 프로텍트가 막으면 **자세히 알아보기** 아래의 **무시하고 설치**를 고른다.
-4. 업데이트도 같은 링크에서 받아 설치하면 덮어쓰기 된다. 설정한 이름은 그대로 남는다.
+### 처음 한 번
 
+1. **서명 키를 GitHub에 넣는다.** PC 브라우저로 저장소 Settings → Secrets and variables → Actions → **New repository secret**에서 아래 두 개를 만든다. 값은 따로 받은 파일 내용을 그대로 붙여넣는다.
+
+   | 이름 | 값 |
+   |---|---|
+   | `ANDROID_KEYSTORE_B64` | 키스토어 파일을 base64로 바꾼 한 줄 문자열 |
+   | `ANDROID_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
+
+2. **한 번 빌드한다.** Actions → **Build Android APK** → **Run workflow**에서 브랜치 `main`으로 실행하고, 초록색으로 끝날 때까지 5분쯤 기다린다. 릴리스 페이지의 "서명" 줄이 `고정 키`인지 본다.
+3. **폰에 있던 FieldCam을 지운다.** PC의 Android Studio에서 깐 앱은 서명 키가 달라서 그 위에 덮어 깔 수 없다. 지우면 설정한 이름도 지워지니 필요하면 미리 적어 둔다. 찍은 사진은 갤러리에 그대로 남는다.
+4. **설치한다.** 폰 브라우저에서 다운로드 링크를 연다. Chrome이 "해를 끼칠 수 있는 파일"이라고 물으면 다운로드를 누른다. 다운로드 완료 알림에서 받은 파일을 열면 "출처를 알 수 없는 앱" 설정으로 가는데, APK를 연 앱(Chrome이나 내 파일)의 **이 출처 허용**을 켜고 돌아온다. 삼성은 설정 → 보안 및 개인정보 보호 → 자동 차단이 켜져 있으면 먼저 끈다. Play 프로텍트가 막으면 **자세히 알아보기** 아래의 **무시하고 설치**를 고른다.
+
+### 업데이트
+
+`main`에 합쳐질 때마다 몇 분 뒤 같은 링크의 APK가 새것으로 바뀐다. 같은 링크에서 받아 설치하면 덮어쓰기 되고 설정한 이름도 남는다.
+받을 때마다 다운로드 완료 알림에서 방금 받은 파일을 연다. 같은 이름 파일이 있으면 브라우저가 `fieldcam (1).apk`처럼 이름을 바꿔 저장해서, 내 파일에서 `fieldcam.apk`를 열면 예전 것이 깔린다.
 설정 화면 오른쪽 위의 `v1.0.N`이 지금 깔린 빌드 번호다. 릴리스 페이지의 앱 버전과 같으면 최신이다.
-링크가 404면 Actions 탭에서 마지막 실행이 빨간 X인지 본다.
 
-### 서명 키 (처음 한 번)
+- 링크가 404거나 APK가 안 바뀌면 Actions 탭에서 마지막 `main` 실행이 빨간 X인지 본다. 서명 키가 없으면 빌드는 해도 릴리스는 갱신하지 않고 빨간 X로 끝난다.
+- "앱이 설치되지 않았습니다"가 뜨면 대개 예전 파일을 연 것이다. 방금 받은 파일인지, 설정 화면의 버전이 릴리스 버전보다 높지 않은지 먼저 본다. 서명 키를 바꿨거나 PC에서 깐 앱일 때만 지우고 설치한다. 지우면 설정한 이름이 모두 지워진다.
+- `claude/`로 시작하는 브랜치 실행은 검증용이라 릴리스를 바꾸지 않는다. 그 빌드는 이 실행 전용 임시 키로 서명된다.
 
-안드로이드는 같은 키로 서명된 APK만 덮어쓰기 설치를 허용한다. 키는 공개 저장소에 두지 않고 GitHub의 비공개 설정(Secrets)에 둔다.
-저장소 Settings → Secrets and variables → Actions → **New repository secret**으로 두 개를 넣는다.
+### 서명 키 보관과 다른 키 쓰기
+
+키스토어 파일과 비밀번호는 저장소에 넣지 않고 따로 보관한다. 잃어버리면 새 키를 만들어 Secrets를 바꿔야 하고, 그때 한 번은 앱을 지우고 깔아야 한다.
+필요하면 두 비밀을 더 넣을 수 있다.
 
 | 이름 | 값 |
 |---|---|
-| `ANDROID_KEYSTORE_B64` | 키스토어 파일을 base64로 바꾼 한 줄 문자열 |
-| `ANDROID_KEYSTORE_PASSWORD` | 키스토어 비밀번호 |
+| `ANDROID_KEY_ALIAS` | 키 별칭. 비우면 키스토어에 키가 하나일 때 그 별칭을 쓰고, 아니면 `fieldcam` |
+| `ANDROID_KEY_PASSWORD` | 키 비밀번호. 비우면 키스토어 비밀번호와 같다고 본다 |
 
-넣은 뒤에는 Actions → **Build Android APK** → **Run workflow**(main)로 한 번 다시 빌드한다.
-비밀이 없으면 빌드마다 임시 키로 서명된다. 설치는 되지만 업데이트할 때마다 앱을 지우고 깔아야 하고, 그때 설정한 이름도 지워진다. 릴리스 설명의 "서명" 줄에서 어느 키인지 보인다.
-키스토어 파일과 비밀번호는 따로 보관한다. 잃어버리면 새 키를 만들어야 하고, 그때 한 번은 앱을 지우고 깔아야 한다.
+새 키를 직접 만들 때는 JDK의 keytool과 base64를 쓴다. 윈도우는 Android Studio의 `jbr\bin\keytool.exe`가 있다.
+
+```bash
+keytool -genkeypair -storetype PKCS12 -keystore fieldcam.p12 -alias fieldcam -keyalg RSA -keysize 2048 -validity 36500
+base64 -w0 fieldcam.p12 > fieldcam.p12.b64
+```
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes((Resolve-Path fieldcam.p12))) | Set-Content -NoNewline fieldcam.p12.b64
+```
 
 ## 동작
 
@@ -57,7 +79,7 @@
 | 오버홀 | `Pictures/FieldCam/{공사}/` | `{공사}_{1차}_{2차}_{mmddyy}_{순번}.jpg` | `B2OH26_ESP_1A3_110426_002.jpg` |
 
 - 순번은 날짜·분류별로 매일 001부터. 폴더 안에서 이 앱이 찍은 파일을 세서 다음 번호를 정한다.
-- 앱을 지웠다 다시 깔면 안드로이드가 예전 사진을 이 앱 것으로 보지 않는다. 그래서 그날 이미 찍은 분류는 번호가 001부터 다시 시작하고, 이름이 겹치면 갤러리가 파일명 뒤에 ` (1)`을 붙여 저장한다. 사진이 지워지거나 덮어써지지는 않고, 다음 날부터는 겹치지 않는다.
+- 앱을 지웠다 다시 깔거나 앱 데이터를 지우면 안드로이드가 예전 사진을 이 앱 것으로 보지 않는다. 그래서 그날 이미 찍은 분류는 번호가 001부터 다시 시작하고, 이름이 겹치면 갤러리가 파일명 뒤에 ` (1)`, ` (2)`를 붙여 저장한다. 그날은 앱을 다시 열 때마다 반복될 수 있고 "오늘 N장"도 0부터 센다. 사진이 지워지거나 덮어써지지는 않고 다음 날부터는 정상이다. 그래서 앱을 다시 까는 일은 그날 사진을 찍기 전에 한다.
 - 이름은 영문·숫자·하이픈만. 공백과 밑줄은 하이픈으로 바뀐다. 밑줄은 파일명 구분자다.
 - 오버홀 공사는 설정에서 여러 개 두고 "현재 공사"를 고른다. 공사마다 폴더가 따로 생긴다.
 
@@ -78,6 +100,7 @@ Android Studio에서 저장소를 열고 Build → Generate APKs 하면 된다. 
 
 ```properties
 # keystore.properties (storeFile 은 절대 경로 또는 프로젝트 루트 기준 상대 경로, 윈도우는 C:/Users/... 처럼 슬래시)
+# 값 안의 역슬래시(\)는 두 번(\\) 쓴다
 storeFile=C:/Users/me/keys/fieldcam.p12
 storePassword=키스토어 비밀번호
 keyAlias=fieldcam
@@ -88,7 +111,8 @@ keyAlias=fieldcam
 ./gradlew :app:assembleRelease -PversionCode=1012 -PversionName=1.0.12
 ```
 
-PC 빌드의 버전 번호는 기본값 `1.0-local`, versionCode 1 이다. GitHub 빌드보다 낮아서, GitHub APK가 깔린 폰에 PC APK를 파일로 덮어 깔면 "앱이 설치되지 않았습니다"가 뜬다. 그때는 위의 `-PversionCode`를 더 크게 주고 빌드한다.
+PC 빌드는 GitHub에서 받은 앱 위에 깔리지 않는다. 버전 번호가 기본값 `1.0-local`, versionCode 1 로 GitHub 빌드보다 낮고, `keystore.properties`가 없으면 서명 키도 다르다.
+Android Studio의 ▶ 실행이 기존 앱을 지울지 물으면 취소한다. 지우면 설정한 이름이 지워진다. 평소엔 GitHub 링크로만 설치한다.
 
 Android 10 이상에서는 `Pictures/` 아래에 자기 사진을 넣는 데 저장소 권한이 필요 없다. 앱이 요구하는 권한은 카메라뿐이다.
 

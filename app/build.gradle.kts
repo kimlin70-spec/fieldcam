@@ -21,7 +21,8 @@ val appVersionName = (findProperty("versionName") as String?) ?: "1.0-local"
 // 모든 빌드가 같은 키로 서명돼야 새 APK 가 이미 깔린 앱 위에 덮어쓰기 설치되고 설정이 유지된다.
 val keystoreProps = Properties().apply {
     val f = rootProject.file("keystore.properties")
-    if (f.exists()) f.inputStream().use { load(it) }
+    // UTF-8 로 읽어야 C:/Users/김…/ 같은 한글 경로도 그대로 읽힌다 (InputStream 으로 읽으면 ISO-8859-1)
+    if (f.exists()) f.reader(Charsets.UTF_8).use { load(it) }
 }
 val releaseKeystore: File? = keystoreProps.getProperty("storeFile")
     ?.trim()
@@ -76,6 +77,13 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    packaging {
+        // minSdk 28 이상이면 AGP 가 dex 를 압축하지 않고 넣어 APK 가 46MB 가 된다.
+        // 폰에서 GitHub 링크로 받는 앱이라 압축해서 다운로드 크기를 줄인다.
+        dex {
+            useLegacyPackaging = true
+        }
     }
     lint {
         // Play 스토어에 올리지 않고 APK 로 직접 설치하는 앱이다.
