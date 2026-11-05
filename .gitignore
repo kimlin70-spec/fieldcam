@@ -8,3 +8,9 @@
 /captures/
 .externalNativeBuild/
 .cxx/
+
+# 서명 키는 저장소에 넣지 않는다 (GitHub Secrets 또는 PC 의 keystore.properties 로만)
+keystore.properties
+*.jks
+*.p12
+*.keystore

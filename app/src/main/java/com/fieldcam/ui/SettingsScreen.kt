@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.fieldcam.BuildConfig
 import com.fieldcam.core.Config
 import com.fieldcam.core.Defaults
 import com.fieldcam.core.Group
@@ -96,6 +97,14 @@ fun SettingsScreen(
                 Icon(Icons.Default.ArrowBack, contentDescription = "뒤로")
             }
             Text("설정", fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.weight(1f))
+            // 지금 깔린 빌드. GitHub 릴리스의 빌드 번호와 비교해서 최신인지 확인한다.
+            Text(
+                "v${BuildConfig.VERSION_NAME}",
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.outline,
+                modifier = Modifier.padding(end = 16.dp),
+            )
         }
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0; groupIndex = null }, text = { Text("경상", fontSize = 18.sp) })
