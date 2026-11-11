@@ -51,7 +51,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -70,6 +69,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.fieldcam.core.Target
 import com.fieldcam.data.PhotoStore
+import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
@@ -94,7 +94,6 @@ fun CaptureScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val scope = rememberCoroutineScope()
 
     val imageCapture = remember { ImageCapture.Builder().build() }
     val binding = remember { CameraBinding() }
@@ -127,27 +126,36 @@ fun CaptureScreen(
     fun shoot() {
         if (binding.useCases.isEmpty()) return // 카메라가 아직 준비되지 않았다 (미리보기도 아직 검다)
         val rot = rotation.intValue // 누른 순간의 폰 방향
-        scope.launch {
-            val slot = photoStore.reserve(target)
-            flash = true
-            vibrate(context)
-            count = slot.seq
-            banner = "${target.title}  ${slot.seq}장"
-            val options = ImageCapture.OutputFileOptions
-                .Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, slot.values)
-                .build()
-            // takePicture 가 호출되는 순간 이 값으로 사진 방향(EXIF)을 정한다. 미리보기에는 넣지 않는다.
-            imageCapture.targetRotation = rot
-            CameraQueue.captureStarted()
-            imageCapture.takePicture(options, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback {
-                override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    CameraQueue.captureFinished()
-                }
-                override fun onError(e: ImageCaptureException) {
-                    CameraQueue.captureFinished()
-                    banner = "저장 실패: ${e.message}"
-                }
-            })
+        // 누른 순간부터 센다. 바로 화면을 떠나도 이 사진이 끝날 때까지 카메라를 놓지 않는다.
+        CameraQueue.captureStarted()
+        // 화면을 떠나 화면의 코루틴이 취소돼도 누른 사진은 끝까지 찍는다
+        captureScope.launch {
+            var submitted = false
+            try {
+                val slot = photoStore.reserve(target)
+                flash = true
+                vibrate(context)
+                count = slot.seq
+                banner = "${target.title}  ${slot.seq}장"
+                val options = ImageCapture.OutputFileOptions
+                    .Builder(context.contentResolver, MediaStore.Images.Media.EXTERNAL_CONTENT_URI, slot.values)
+                    .build()
+                // takePicture 가 호출되는 순간 이 값으로 사진 방향(EXIF)을 정한다. 미리보기에는 넣지 않는다.
+                imageCapture.targetRotation = rot
+                imageCapture.takePicture(options, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback {
+                    override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                        CameraQueue.captureFinished()
+                    }
+                    override fun onError(e: ImageCaptureException) {
+                        CameraQueue.captureFinished()
+                        banner = "저장 실패: ${e.message}"
+                    }
+                })
+                submitted = true
+            } finally {
+                // takePicture 까지 못 갔으면 결과 알림이 오지 않으므로 여기서 끝낸다
+                if (!submitted) CameraQueue.captureFinished()
+            }
         }
     }
 
@@ -221,8 +229,10 @@ fun CaptureScreen(
                         .clip(CircleShape)
                         .background(if (torch) Color(0xFFFFC107) else Color.Black.copy(alpha = 0.5f))
                         .clickable {
+                            // 카메라를 잡기 전에는 무시한다. 버튼만 켜짐으로 바뀌고 불은 안 켜지는 일을 막는다.
+                            val c = camera ?: return@clickable
                             torch = !torch
-                            camera?.cameraControl?.enableTorch(torch)
+                            c.cameraControl.enableTorch(torch)
                         },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -274,6 +284,9 @@ fun CaptureScreen(
     }
 }
 
+/** 화면이 사라져도 누른 사진을 끝까지 찍기 위한 앱 전체 코루틴 범위. 메인 스레드에서 돈다. */
+private val captureScope = MainScope()
+
 /** 촬영 화면 하나가 잡은 카메라 기록. 메인 스레드에서만 읽고 쓴다. */
 private class CameraBinding {
     var provider: ProcessCameraProvider? = null
@@ -316,9 +329,11 @@ private object CameraQueue {
 
     fun whenIdle(action: () -> Unit) {
         waiting.addLast(action)
-        drain()
+        // 기다리는 일이 늘어도 안전장치 시간은 다시 늦추지 않는다. 사진 저장이 진행될 때만 늦춘다.
+        if (pending == 0) drain() else if (!handler.hasCallbacks(giveUp)) handler.postDelayed(giveUp, MAX_WAIT_MS)
     }
 
+    /** 사진 저장이 하나 끝날 때마다(진행이 있을 때) 불린다. 다 끝났으면 미룬 일을 순서대로 실행한다. */
     private fun drain() {
         handler.removeCallbacks(giveUp)
         if (pending > 0) {
