@@ -2,14 +2,13 @@ package com.fieldcam.ui
 
 import android.app.Activity
 import android.content.Context
-import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.MediaStore
-import android.view.OrientationEventListener
-import android.view.Surface
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
 import androidx.camera.core.Camera
@@ -53,6 +52,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,7 +68,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import com.fieldcam.core.DeviceRotation
 import com.fieldcam.core.Target
 import com.fieldcam.data.PhotoStore
 import kotlinx.coroutines.delay
@@ -80,13 +79,14 @@ import kotlinx.coroutines.launch
  * 상단: 현재 분류 이름(누르면 선택 화면), 오버홀이면 ◀ ▶ 로 같은 1차 안에서 이동.
  * 하단 1/3 전체가 셔터. 볼륨키·리모컨은 [shutter] 로 들어온다.
  * 후면 카메라 고정, 전환 없음. 화면 꺼짐 방지.
- * 화면은 세로 고정이지만 사진은 셔터를 누른 순간 폰을 든 방향으로 저장된다.
- * 화면을 떠나면 카메라를 놓는다. 손전등도 같이 꺼진다.
+ * 화면은 세로 고정이지만 사진은 셔터를 누른 순간 폰을 든 방향 [rotation] 으로 저장된다.
+ * 화면을 떠나면 카메라를 놓는다. 손전등도 같이 꺼진다. 찍는 중인 사진은 저장을 마친 뒤에 놓는다.
  */
 @Composable
 fun CaptureScreen(
     target: Target,
     shutter: Flow<Unit>,
+    rotation: IntState,
     photoStore: PhotoStore,
     onPrev: (() -> Unit)?,
     onNext: (() -> Unit)?,
@@ -97,8 +97,6 @@ fun CaptureScreen(
     val scope = rememberCoroutineScope()
 
     val imageCapture = remember { ImageCapture.Builder().build() }
-    // 화면이 세로 고정이라 CameraX 기본값으로는 늘 세로 사진이 된다. 폰을 실제로 든 방향을 따로 잰다.
-    val rotation = rememberDeviceRotation()
     val binding = remember { CameraBinding() }
     var camera by remember { mutableStateOf<Camera?>(null) }
     var torch by remember { mutableStateOf(false) }
@@ -115,7 +113,7 @@ fun CaptureScreen(
     DisposableEffect(Unit) {
         onDispose {
             binding.left = true
-            binding.releaseIfIdle()
+            CameraQueue.whenIdle { binding.release() }
         }
     }
 
@@ -127,6 +125,7 @@ fun CaptureScreen(
     LaunchedEffect(target) { count = photoStore.countToday(target) }
 
     fun shoot() {
+        if (binding.useCases.isEmpty()) return // 카메라가 아직 준비되지 않았다 (미리보기도 아직 검다)
         val rot = rotation.intValue // 누른 순간의 폰 방향
         scope.launch {
             val slot = photoStore.reserve(target)
@@ -139,22 +138,22 @@ fun CaptureScreen(
                 .build()
             // takePicture 가 호출되는 순간 이 값으로 사진 방향(EXIF)을 정한다. 미리보기에는 넣지 않는다.
             imageCapture.targetRotation = rot
-            binding.pending++
+            CameraQueue.captureStarted()
             imageCapture.takePicture(options, ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageSavedCallback {
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-                    binding.pending--
-                    binding.releaseIfIdle()
+                    CameraQueue.captureFinished()
                 }
                 override fun onError(e: ImageCaptureException) {
-                    binding.pending--
-                    binding.releaseIfIdle()
+                    CameraQueue.captureFinished()
                     banner = "저장 실패: ${e.message}"
                 }
             })
         }
     }
 
-    LaunchedEffect(shutter) { shutter.collect { shoot() } }
+    // 볼륨키·리모컨 셔터. ◀ ▶ 로 이름이 바뀌어도 늘 지금 이름으로 찍도록 최신 shoot 을 부른다.
+    val onShutter by rememberUpdatedState<() -> Unit> { shoot() }
+    LaunchedEffect(shutter) { shutter.collect { onShutter() } }
     LaunchedEffect(flash) { if (flash) { delay(80); flash = false } }
     LaunchedEffect(banner) { if (banner != null) { delay(1200); banner = null } }
 
@@ -166,14 +165,17 @@ fun CaptureScreen(
                     scaleType = PreviewView.ScaleType.FIT_CENTER
                     val future = ProcessCameraProvider.getInstance(ctx)
                     future.addListener({
-                        // 준비가 끝나기 전에 화면을 떠났으면 카메라를 잡지 않는다
-                        if (binding.left) return@addListener
-                        val provider = future.get()
-                        binding.provider = provider
-                        val preview = Preview.Builder().build().also { it.setSurfaceProvider(surfaceProvider) }
-                        provider.unbindAll()
-                        camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
-                        binding.useCases = arrayOf(preview, imageCapture)
+                        // 직전 화면에서 찍은 사진이 아직 저장 중이면 그게 끝난 뒤에 카메라를 잡는다
+                        CameraQueue.whenIdle {
+                            // 준비가 끝나기 전에 화면을 떠났으면 카메라를 잡지 않는다
+                            if (binding.left) return@whenIdle
+                            val provider = future.get()
+                            binding.provider = provider
+                            val preview = Preview.Builder().build().also { it.setSurfaceProvider(surfaceProvider) }
+                            provider.unbindAll()
+                            camera = provider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, imageCapture)
+                            binding.useCases = arrayOf(preview, imageCapture)
+                        }
                     }, ContextCompat.getMainExecutor(ctx))
                 }
             },
@@ -272,47 +274,58 @@ fun CaptureScreen(
     }
 }
 
-/**
- * 폰을 실제로 든 방향 (Surface.ROTATION_*). 촬영 화면이 보이는 동안만 가속도 센서를 켠다.
- * 거의 수평(바닥 장비를 내려다보거나 천장을 올려다볼 때)이면 센서가 방향을 몰라 ORIENTATION_UNKNOWN 을 주므로 직전 방향을 그대로 둔다.
- * 가속도 센서가 없는 기기는 enable() 이 아무것도 하지 않아 예전처럼 늘 세로로 저장된다.
- */
-@Composable
-private fun rememberDeviceRotation(): IntState {
-    val context = LocalContext.current
-    val rotation = remember { mutableIntStateOf(Surface.ROTATION_0) }
-    val listener = remember(context) {
-        object : OrientationEventListener(context, SensorManager.SENSOR_DELAY_UI) {
-            override fun onOrientationChanged(degrees: Int) {
-                if (degrees == OrientationEventListener.ORIENTATION_UNKNOWN) return
-                val next = DeviceRotation.next(degrees, rotation.intValue)
-                if (next != rotation.intValue) rotation.intValue = next
-            }
-        }
-    }
-    LifecycleStartEffect(listener) {
-        listener.enable()
-        onStopOrDispose { listener.disable() }
-    }
-    return rotation
-}
-
-/**
- * 화면을 떠날 때 카메라를 놓기 위한 기록. 모두 메인 스레드에서만 읽고 쓴다.
- * 카메라 준비가 화면을 떠난 뒤에 끝나면 아예 잡지 않고, 찍는 중인 사진은 저장이 끝난 뒤에 놓는다.
- * 놓을 때는 이 화면이 잡은 것만 놓아서, 그 사이 다시 들어온 촬영 화면의 카메라는 건드리지 않는다.
- */
+/** 촬영 화면 하나가 잡은 카메라 기록. 메인 스레드에서만 읽고 쓴다. */
 private class CameraBinding {
     var provider: ProcessCameraProvider? = null
     var useCases: Array<UseCase> = emptyArray()
     var left = false
-    var pending = 0
 
-    fun releaseIfIdle() {
-        if (left && pending == 0 && useCases.isNotEmpty()) {
+    /** 이 화면이 잡은 것만 놓는다. 손전등도 같이 꺼진다. */
+    fun release() {
+        if (useCases.isNotEmpty()) {
             provider?.unbind(*useCases)
             useCases = emptyArray()
         }
+    }
+}
+
+/**
+ * 카메라를 잡고 놓는 일을 순서대로 처리한다. 앱 전체에 하나이고 메인 스레드에서만 쓴다.
+ * 저장이 끝나지 않은 사진이 있으면, 화면을 떠나며 카메라를 놓는 일과 새 촬영 화면이 카메라를 잡는 일을
+ * 그 저장이 끝날 때까지 미룬다. 그래야 찍자마자 나가거나 곧바로 다른 이름으로 들어가도 사진이 끊기지 않는다.
+ * 저장 결과 알림이 끝내 오지 않는 이상 상황에 대비해, 진행 없이 [MAX_WAIT_MS] 가 지나면 미룬 일을 그냥 실행한다.
+ */
+private object CameraQueue {
+    private const val MAX_WAIT_MS = 5_000L
+    private val handler = Handler(Looper.getMainLooper())
+    private val waiting = ArrayDeque<() -> Unit>()
+    private var pending = 0
+    private val giveUp = Runnable {
+        pending = 0
+        drain()
+    }
+
+    fun captureStarted() {
+        pending++
+    }
+
+    fun captureFinished() {
+        if (pending > 0) pending--
+        drain()
+    }
+
+    fun whenIdle(action: () -> Unit) {
+        waiting.addLast(action)
+        drain()
+    }
+
+    private fun drain() {
+        handler.removeCallbacks(giveUp)
+        if (pending > 0) {
+            if (waiting.isNotEmpty()) handler.postDelayed(giveUp, MAX_WAIT_MS)
+            return
+        }
+        while (waiting.isNotEmpty()) waiting.removeFirst().invoke()
     }
 }
 

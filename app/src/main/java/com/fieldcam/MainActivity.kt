@@ -39,6 +39,7 @@ import com.fieldcam.ui.CaptureScreen
 import com.fieldcam.ui.FieldCamTheme
 import com.fieldcam.ui.SelectScreen
 import com.fieldcam.ui.SettingsScreen
+import com.fieldcam.ui.rememberDeviceRotation
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 
@@ -107,6 +108,9 @@ private fun App(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val config by configStore.config.collectAsStateWithLifecycle<Config?>(initialValue = null)
+    // 폰을 든 방향은 앱 전체에서 한 번만 잰다. 어느 화면에서든 마지막으로 든 방향을 기억해서,
+    // 수평으로 든 채 촬영 화면에 들어가도 직전 방향으로 찍힌다.
+    val rotation = rememberDeviceRotation()
     var screen by remember { mutableStateOf<Screen>(Screen.Select) }
     var granted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED)
@@ -147,6 +151,7 @@ private fun App(
             CaptureScreen(
                 target = t,
                 shutter = shutter,
+                rotation = rotation,
                 photoStore = photoStore,
                 onPrev = if (siblings != null && index > 0) ({ go(index - 1) }) else null,
                 onNext = if (siblings != null && index in 0 until siblings.size - 1) ({ go(index + 1) }) else null,
